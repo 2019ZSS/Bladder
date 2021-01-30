@@ -16,10 +16,11 @@ from utils.loss import SoftDiceLoss, SoftDiceLossV2
 from utils.metrics import diceCoeff, diceCoeffv2
 from utils import tools
 from u_net import *
- 
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 crop_size = 128
 batch_size = 2
-n_epoch = 20
+n_epoch = 1
 model_name = 'U_Net_'
 loss_name = 'dice_'
 times = 'no_' + str(n_epoch)
@@ -28,7 +29,7 @@ writer = SummaryWriter(os.path.join('./log/bladder_trainlog',  'bladder_exp', mo
 
 
 def main():
-    net = U_Net(img_ch=1, num_classes=3).cuda()
+    net = U_Net(img_ch=1, num_classes=3).to(device)
     
     train_joint_transform = joint_transforms.Compose([
         joint_transforms.Scale(256),
@@ -45,15 +46,14 @@ def main():
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
  
     if loss_name == 'dice_':
-        criterion = SoftDiceLossV2(activation='sigmoid', num_classes=3).cuda()
+        criterion = SoftDiceLossV2(activation='sigmoid', num_classes=3).to(device)
     elif loss_name == 'bce_':
-        criterion = nn.BCEWithLogitsLoss().cuda()
+        criterion = nn.BCELoss().to(device)
     elif loss_name == 'wbce_':
-        criterion = WeightedBCELossWithSigmoid().cuda()
-    elif loss_name == 'er_':
-        criterion = EdgeRefinementLoss().cuda()
-    optimizer = optim.Adam(net.parameters(), lr=1e-4)
-    criterion = nn.BCEWithLogitsLoss().cuda()
+        criterion = nn.BCEWithLogitsLoss().to(device)
+    elif loss_name == 'ce_':
+        criterion = nn.CrossEntropyLoss().to(device)
+
     optimizer = optim.Adam(net.parameters(), lr=1e-4)
  
     train(train_loader, net, criterion, optimizer, n_epoch, 0)
@@ -68,8 +68,8 @@ def train(train_loader, net, criterion, optimizer, num_epoches , iters):
         d_len = 0
         # 开始训练
         for inputs, mask in train_loader:
-            X = inputs.cuda()
-            y = mask.cuda()
+            X = inputs.to(device)
+            y = mask.to(device)
             optimizer.zero_grad()
             output = net(X)
             loss = criterion(output, y)

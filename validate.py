@@ -13,6 +13,7 @@ from utils.metrics import *
 from utils.loss import *
 import train
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 LOSS = False 
 # numpy 高维数组打印不显示...
 np.set_printoptions(threshold=9999999)
@@ -41,15 +42,14 @@ model.eval()
 if LOSS:
     writer = SummaryWriter(os.path.join('./log/vallog', 'bladder_exp', model_name+loss_name+times+extra_description))
 
-
 if loss_name == 'dice_':
-    criterion = SoftDiceLoss(activation='sigmoid').cuda()
+    criterion = SoftDiceLossV2(activation='sigmoid', num_classes=3).to(device)
 elif loss_name == 'bce_':
-    criterion = nn.BCEWithLogitsLoss().cuda()
+    criterion = nn.BCELoss().to(device)
 elif loss_name == 'wbce_':
-    criterion = WeightedBCELossWithSigmoid().cuda()
-elif loss_name == 'er_':
-    criterion = EdgeRefinementLoss().cuda()
+    criterion = nn.BCEWithLogitsLoss().to(device)
+elif loss_name == 'ce_':
+    criterion = nn.CrossEntropyLoss().to(device)
 
 
 def val(model):
@@ -75,19 +75,19 @@ def val(model):
     img = img.transpose([3, 0, 1, 2])
     img = val_input_transform(img)
 
-    img = img.cuda()
-    model = model.cuda()
+    img = img.to(device)
+    model = model.to(device)
     pred = model(img)
 
     pred = torch.sigmoid(pred)
     pred[pred < 0.5] = 0
     pred[pred > 0.5] = 1
-    bladder_dice = diceCoeffv2(pred[:, 0:1, :], gt.cuda()[:, 0:1, :], activation=None)
-    tumor_dice = diceCoeffv2(pred[:, 1:2, :], gt.cuda()[:, 1:2, :], activation=None)
+    bladder_dice = diceCoeffv2(pred[:, 0:1, :], gt.to(device)[:, 0:1, :], activation=None)
+    tumor_dice = diceCoeffv2(pred[:, 1:2, :], gt.to(device)[:, 1:2, :], activation=None)
     mean_dice = (bladder_dice + tumor_dice) / 2
-    acc = accuracy(pred, gt.cuda())
-    p = precision(pred, gt.cuda())
-    r = recall(pred, gt.cuda())
+    acc = accuracy(pred, gt.to(device))
+    p = precision(pred, gt.to(device))
+    r = recall(pred, gt.to(device))
     print('mean_dice={:.4}, bladder_dice={:.4}, tumor_dice={:.4}, acc={:.4}, p={:.4}, r={:.4}'
           .format(mean_dice.item(), bladder_dice.item(), tumor_dice.item(),
                   acc.item(), p.item(), r.item()))
@@ -96,8 +96,7 @@ def val(model):
     pred_showval = pred
     pred = helpers.reverse_one_hot(pred)
     pred = helpers.colour_code_segmentation(pred, palette)
-    # np.uint8()处理范围[0, 255]
-     # np.uint8()反归一化到[0, 255]
+    # np.uint8()反归一化到[0, 255]
     imgs = np.uint8(np.hstack([pred, mask]))
     cv2.imshow("mri pred gt", imgs)
     cv2.waitKey(0)
@@ -115,11 +114,11 @@ def auto_val(model):
     bladder_dices = 0
     for i, (img, mask) in enumerate(val_loader):
         im = img
-        img = img.cuda()
-        model = model.cuda()
+        img = img.to(device)
+        model = model.to(device)
         pred = model(img)
         if LOSS:
-            loss = criterion(pred, mask.cuda()).item()
+            loss = criterion(pred, mask.to(device)).item()
         pred = torch.sigmoid(pred)
         pred = pred.cpu().detach()
         iters += batch_size
