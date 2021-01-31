@@ -11,6 +11,7 @@ from utils import helpers
 import utils.transforms as extended_transforms
 from utils.metrics import *
 from utils.loss import *
+from u_net import U_Net
 import train
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -37,7 +38,9 @@ model_name = train.model_name
 loss_name = train.loss_name
 times = train.times
 extra_description = train.extra_description
-model = torch.load("./model/checkpoint/exp/{}.pth".format(model_name + loss_name + times + extra_description))
+checkpoint = torch.load("./model/checkpoint/exp/{}.pth".format(model_name + loss_name + times + extra_description))
+model = U_Net(img_ch=1, num_classes=3).to(device)
+model.load_state_dict(checkpoint['model_state_dict'])
 model.eval()
 if LOSS:
     writer = SummaryWriter(os.path.join('./log/vallog', 'bladder_exp', model_name+loss_name+times+extra_description))
