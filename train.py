@@ -26,7 +26,7 @@ loss_name = 'dice_'
 times = 'no_' + str(n_epoch)
 extra_description = ''
 writer = SummaryWriter(os.path.join('./log/bladder_trainlog',  'bladder_exp', model_name+loss_name+times+extra_description))
-resume = True
+resume = False
 
 def main():
     net = U_Net(img_ch=1, num_classes=3).to(device)
@@ -130,6 +130,7 @@ def train(train_loader, net, criterion, optimizer, num_epoches , iters):
             writer.close()
             print('训练停止')
             return 
+ 
  
 if __name__ == '__main__':
     main()
