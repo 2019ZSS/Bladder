@@ -4,3 +4,4 @@ log
 *.pth
 .idea
 hospital_data
+nstree.json
