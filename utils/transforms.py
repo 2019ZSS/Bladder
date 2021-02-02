@@ -27,10 +27,22 @@ class NpyToTensor(object):
         return torch.from_numpy(np.array(img, dtype=np.float32))
 
 
-# 不带归一化
 class ImgToTensor(object):
+    """不带归一化"""
+    name = 'ImgToTensor'
+    
     def __call__(self, img):
         img = torch.from_numpy(np.array(img))
         if isinstance(img, torch.ByteTensor):
             return img.float()
 
+
+class ImgToTensorV2(object):
+    """带归一化"""
+    name = 'ImgToTensorV2'
+
+    def __call__(self, img):
+        img = torch.from_numpy(np.array(img))
+        img = img.float()
+        img = img / 255
+        return img
