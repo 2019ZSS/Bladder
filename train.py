@@ -27,11 +27,8 @@ times = 'no_' + str(n_epoch)
 extra_description = ''
 writer = SummaryWriter(os.path.join('./log/bladder_trainlog',  'bladder_exp', model_name+loss_name+times+extra_description))
 resume = False
-<<<<<<< HEAD
-=======
 data_path = './hospital_data/2d'
 
->>>>>>> shensheng
 
 def main():
     net = U_Net(img_ch=1, num_classes=3).to(device)
