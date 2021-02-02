@@ -13,7 +13,7 @@ from tensorboardX import SummaryWriter
  
 import bladder
 from utils.loss import SoftDiceLoss, SoftDiceLossV2
-from utils.metrics import diceCoeff, diceCoeffv2
+from utils.metrics import diceCoeff, diceCoeffv2, diceCoeffv3
 from utils import tools
 from u_net import *
 
@@ -27,6 +27,11 @@ times = 'no_' + str(n_epoch)
 extra_description = ''
 writer = SummaryWriter(os.path.join('./log/bladder_trainlog',  'bladder_exp', model_name+loss_name+times+extra_description))
 resume = False
+<<<<<<< HEAD
+=======
+data_path = './hospital_data/2d'
+
+>>>>>>> shensheng
 
 def main():
     net = U_Net(img_ch=1, num_classes=3).to(device)
@@ -40,9 +45,11 @@ def main():
     train_input_transform = extended_transforms.ImgToTensor()
  
     target_transform = extended_transforms.MaskToTensor()
-    train_set = bladder.Bladder('./data', 'train',
+    make_dataset = bladder.new_make_dataset
+    train_set = bladder.Bladder(data_path, 'train',
                                 joint_transform=train_joint_transform, center_crop=center_crop,
-                                transform=train_input_transform, target_transform=target_transform)
+                                transform=train_input_transform, target_transform=target_transform,
+                                make_dataset_fn=make_dataset)
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
  
     if loss_name == 'dice_':

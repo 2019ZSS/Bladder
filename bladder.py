@@ -41,9 +41,35 @@ def make_dataset(root, mode):
         pass
     return items
 
+
+def new_make_dataset(root, mode):
+    assert mode in ['train', 'val', 'test']
+    items = []
+    if mode == 'train':
+        img_path = os.path.join(root, 'Image(split_by_people&class)')
+        mask_path = os.path.join(root, 'Label(split_by_people&class)')
+        data_list = [l.strip('\n') for l in open(os.path.join(root, 'train.txt')).readlines()]
+        for it in data_list:
+            item = (os.path.join(img_path, it), os.path.join(mask_path, it))
+            items.append(item)
+    elif mode == 'val':
+        img_path = os.path.join(root, 'Image(split_by_people&class)')
+        mask_path = os.path.join(root, 'Label(split_by_people&class)')
+        data_list = [l.strip('\n') for l in open(os.path.join(root, 'val.txt')).readlines()]
+        for it in data_list:
+            item = (os.path.join(img_path, it), os.path.join(mask_path, it))
+            items.append(item)
+    else:
+        pass
+    return items
+
+
 class Bladder(data.Dataset):
-    def __init__(self, root, mode, joint_transform=None, center_crop=None, transform=None, target_transform=None):
-        self.imgs = make_dataset(root, mode)
+    def __init__(self, root, mode, joint_transform=None, center_crop=None, transform=None, target_transform=None, make_dataset_fn=None):
+        if make_dataset_fn is None:
+            self.imgs = make_dataset(root, mode)
+        else:
+            self.imgs = make_dataset_fn(root, mode)
         self.palette = palette
         self.mode = mode
         if len(self.imgs) == 0:

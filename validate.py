@@ -19,6 +19,7 @@ LOSS = False
 # numpy 高维数组打印不显示...
 np.set_printoptions(threshold=9999999)
 batch_size = 1
+data_path = './hospital_data/2d'
 
 palette = [[128], [255], [0]]
 val_input_transform = extended_transforms.ImgToTensor()
@@ -28,9 +29,10 @@ center_crop = joint_transforms.Compose([
 )
  
 target_transform = extended_transforms.MaskToTensor()
-val_set = bladder.Bladder('./data', 'val',
+make_dataset = bladder.new_make_dataset
+val_set = bladder.Bladder(data_path, 'val',
                               transform=val_input_transform, center_crop=center_crop,
-                              target_transform=target_transform)
+                              target_transform=target_transform, make_dataset_fn=make_dataset)
 val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
  
 # 验证用的模型名称
@@ -95,10 +97,11 @@ def val(model):
           .format(mean_dice.item(), bladder_dice.item(), tumor_dice.item(),
                   acc.item(), p.item(), r.item()))
     pred = pred.cpu().detach().numpy()[0].transpose([1, 2, 0])
+    if val_input_transform.name == 'ImgToTensorV2':
+        pred = np.uint8(pred * 255)
     # 用来看预测的像素值
     pred_showval = pred
-    pred = helpers.reverse_one_hot(pred)
-    pred = helpers.colour_code_segmentation(pred, palette)
+    pred = helpers.onehot_to_mask(pred, bladder.palette)
     # np.uint8()反归一化到[0, 255]
     imgs = np.uint8(np.hstack([pred, mask]))
     cv2.imshow("mri pred gt", imgs)
@@ -142,12 +145,16 @@ def auto_val(model):
         gt = mask.numpy()[0].transpose([1, 2, 0])
         gt = helpers.onehot_to_mask(gt, bladder.palette)
         pred = pred.cpu().detach().numpy()[0].transpose([1, 2, 0])
+        if val_input_transform.name == 'ImgToTensorV2':
+            pred = np.uint8(pred * 255)
         pred = helpers.onehot_to_mask(pred, bladder.palette)
         im = im[0].numpy().transpose([1, 2, 0])
         if LOSS:
             writer.add_scalar('val_main_loss', loss, iters)
         if len(imgs) < SIZES:
-            imgs.append(im * 255)
+            if val_input_transform.name == 'ImgToTensorV2':
+                im = np.uint8(im * 255)
+            imgs.append(im)
             preds.append(pred)
             gts.append(gt)
     val_mean_dice = dices / (len(val_loader) / batch_size)
