@@ -42,11 +42,11 @@ def main():
     train_input_transform = extended_transforms.ImgToTensor()
  
     target_transform = extended_transforms.MaskToTensor()
-    make_dataset = bladder.new_make_dataset
+    make_dataset_fn = bladder.make_dataset_v2
     train_set = bladder.Bladder(data_path, 'train',
                                 joint_transform=train_joint_transform, center_crop=center_crop,
                                 transform=train_input_transform, target_transform=target_transform,
-                                make_dataset_fn=make_dataset)
+                                make_dataset_fn=make_dataset_fn)
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
  
     if loss_name == 'dice_':

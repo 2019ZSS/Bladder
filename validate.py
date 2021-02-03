@@ -29,10 +29,10 @@ center_crop = joint_transforms.Compose([
 )
  
 target_transform = extended_transforms.MaskToTensor()
-make_dataset = bladder.new_make_dataset
+make_dataset_fn = bladder.make_dataset_v2
 val_set = bladder.Bladder(data_path, 'val',
                               transform=val_input_transform, center_crop=center_crop,
-                              target_transform=target_transform, make_dataset_fn=make_dataset)
+                              target_transform=target_transform, make_dataset_fn=make_dataset_fn)
 val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
  
 # 验证用的模型名称
@@ -53,10 +53,9 @@ elif loss_name == 'bcew_':
     criterion = nn.BCEWithLogitsLoss().to(device)
 
 
-def val(model):
-    imname = '2-IM131'
-    img = Image.open('./data/Images/{}.png'.format(imname))
-    mask = Image.open('./data/Labels/{}.png'.format(imname))
+def val(model, img_path, mask_path):
+    img = Image.open(img_path)
+    mask = Image.open(mask_path)
     img, mask = center_crop(img, mask)
     img = np.asarray(img)
     img = np.expand_dims(img, axis=2)
@@ -99,7 +98,7 @@ def val(model):
     pred_showval = pred
     pred = helpers.onehot_to_mask(pred, bladder.palette)
     # np.uint8()反归一化到[0, 255]
-    imgs = np.uint8(np.hstack([pred, mask]))
+    imgs = np.uint8(np.hstack([mri, pred, mask]))
     cv2.imshow("mri pred gt", imgs)
     cv2.waitKey(0)
  
@@ -168,5 +167,10 @@ def auto_val(model):
 
 
 if __name__ == '__main__':
-    # val(model)
-    auto_val(model)
+    print('validate')
+    root = data_path
+    mode = 'val'
+    imgs = make_dataset_fn(root=root, mode=mode)
+    for img_path, mask_path in imgs:
+        val(model, img_path, mask_path)
+    # auto_val(model)

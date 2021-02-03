@@ -42,7 +42,7 @@ def make_dataset(root, mode):
     return items
 
 
-def new_make_dataset(root, mode):
+def make_dataset_v2(root, mode):
     assert mode in ['train', 'val', 'test']
     items = []
     if mode == 'train':
