@@ -20,9 +20,9 @@ from u_net import *
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 crop_size = 128
 batch_size = 2
-n_epoch = 30
+n_epoch = 10
 model_name = 'U_Net_'
-loss_name = 'dice_'
+loss_name = 'bcew_'
 times = 'no_' + str(n_epoch)
 extra_description = ''
 writer = SummaryWriter(os.path.join('./log/bladder_trainlog',  'bladder_exp', model_name+loss_name+times+extra_description))
@@ -51,12 +51,8 @@ def main():
  
     if loss_name == 'dice_':
         criterion = SoftDiceLossV2(activation='sigmoid', num_classes=3).to(device)
-    elif loss_name == 'bce_':
-        criterion = nn.BCELoss().to(device)
-    elif loss_name == 'wbce_':
+    elif loss_name == 'bcew_':
         criterion = nn.BCEWithLogitsLoss().to(device)
-    elif loss_name == 'ce_':
-        criterion = nn.CrossEntropyLoss().to(device)
 
     optimizer = optim.Adam(net.parameters(), lr=1e-4)
 

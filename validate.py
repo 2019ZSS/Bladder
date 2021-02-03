@@ -49,12 +49,8 @@ if LOSS:
 
 if loss_name == 'dice_':
     criterion = SoftDiceLossV2(activation='sigmoid', num_classes=3).to(device)
-elif loss_name == 'bce_':
-    criterion = nn.BCELoss().to(device)
-elif loss_name == 'wbce_':
+elif loss_name == 'bcew_':
     criterion = nn.BCEWithLogitsLoss().to(device)
-elif loss_name == 'ce_':
-    criterion = nn.CrossEntropyLoss().to(device)
 
 
 def val(model):

@@ -9,7 +9,7 @@ from torchvision import transforms
 from utils import helpers
 
 '''
-128= bladder
+128 = bladder
 255 = tumor
 0 = background 
 '''
