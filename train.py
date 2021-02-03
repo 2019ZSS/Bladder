@@ -20,7 +20,7 @@ from u_net import *
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 crop_size = 128
 batch_size = 2
-n_epoch = 10
+n_epoch = 30
 model_name = 'U_Net_'
 loss_name = 'bcew_'
 times = 'no_' + str(n_epoch)
