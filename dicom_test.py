@@ -145,6 +145,31 @@ def dcm_pred(dicom_path, out_path):
     nrrd.write(os.path.join(out_path, 'tumor.nrrd'), tumor_data, index_order='C')
 
 
+def show_pred_nrdd(origin_path, bladder_path, tumor_path): 
+    '''查看预测的nrrd文件在每一帧上的效果'''
+    origin_data, _ = nrrd.read(origin_path)
+    bladder_data, _ = nrrd.read(bladder_path)
+    tumor_data, _ = nrrd.read(tumor_path)
+
+    assert origin_data.shape == bladder_data.shape
+    assert origin_data.shape == tumor_data.shape
+    size = origin_data.shape[2]
+
+    def get_2d_data(data):
+        img = data[:,:,i]
+        img = img.swapaxes(0, 1)
+        img = np.expand_dims(img, axis=2)
+        return img 
+
+    for i in range(size):
+        origin = get_2d_data(origin_data)
+        bla = get_2d_data(bladder_data)
+        tumor = get_2d_data(tumor_data)
+        imgs = np.uint8(np.hstack([origin, bla, tumor]))
+        cv2.imshow("origin bladder tumor", imgs)
+        cv2.waitKey(0)
+
+
 if __name__ == "__main__":
     print('test')
     # root = './hospital_data/3d'
@@ -153,7 +178,7 @@ if __name__ == "__main__":
     # for img_path in imgs:
     #     test_val(model, img_path, is_show=True)
 
-    '''跑一个'''
+    
     # dicom_path = './hospital_data/MRI_T2/Dicom/1'
     # out_path = './hospital_data/pred'
     # dcm_pred(dicom_path, out_path)
