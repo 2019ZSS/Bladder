@@ -37,9 +37,9 @@ joint_transform = transforms.Compose([
     ])
 val_input_transform = extended_transforms.ImgToTensor()
 make_dataset_fn = dicom_bladder.make_dataset_dcm
-# val_set = dicom_bladder.Bladder(data_path, mode, make_dataset_fn=make_dataset_fn, 
-#                             joint_transform=joint_transform, transform=val_input_transform)
-# val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
+val_set = dicom_bladder.Bladder(data_path, mode, make_dataset_fn=make_dataset_fn, 
+                            joint_transform=joint_transform, transform=val_input_transform)
+val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
 
 
 model_name = train.model_name
@@ -108,7 +108,12 @@ def dcm_pred(dicom_path, out_path):
     dicom_path: dicom文件保存路径
     out_path: 输出路径
     """
-    dcm_list = get_dcm_list(dicom_path)
+    try:
+        dcm_list = get_dcm_list(dicom_path)
+    except Exception as e:
+        print(e)
+        return 
+
     data = []
     bladder_data = []
     tumor_data = []
@@ -116,9 +121,9 @@ def dcm_pred(dicom_path, out_path):
         mri, pred = test_val(model, img_path, is_show=False)
         mri = mri.transpose([2, 0, 1])
         pred = pred.transpose([2, 0, 1])
-        data.append(merge_mri_pred(mri, pred))
-        # print(pred.shape)
+        # data.append(merge_mri_pred(mri, pred))
         data.append(mri)
+        # print(pred.shape)
         tmp = np.zeros(pred.shape)
         tmp[pred == 128] = 128
         bladder_data.append(tmp)
@@ -130,13 +135,14 @@ def dcm_pred(dicom_path, out_path):
         # imgs = np.uint8(np.hstack([bladder_data[-1].transpose([1, 2, 0]), tumor_data[-1].transpose([1, 2, 0])]))
         # cv2.imshow("bladder tumor", imgs)
         # cv2.waitKey(0)
-    
+    if not os.path.exists(out_path):
+        os.makedirs(out_path)
     data = np.concatenate(data)
     bladder_data = np.concatenate(bladder_data)
     tumor_data = np.concatenate(tumor_data)
-    nrrd.write(out_path + 'test.nrrd', data, index_order='C')
-    nrrd.write(out_path + 'bladder.nrrd', bladder_data, index_order='C')
-    nrrd.write(out_path + 'tumor.nrrd', tumor_data, index_order='C')
+    nrrd.write(os.path.join(out_path, 'origin.nrrd'), data, index_order='C')
+    nrrd.write(os.path.join(out_path, 'bladder.nrrd'), bladder_data, index_order='C')
+    nrrd.write(os.path.join(out_path, 'tumor.nrrd'), tumor_data, index_order='C')
 
 
 if __name__ == "__main__":
@@ -146,8 +152,18 @@ if __name__ == "__main__":
     # imgs = make_dataset_fn(root=root, mode=mode)
     # for img_path in imgs:
     #     test_val(model, img_path, is_show=True)
-    dicom_path = r'.\hospital_data\MRI_T2\Dicom\1'
-    out_path = './hospital_data/pred/'
-    dcm_pred(dicom_path, out_path)
+
+    '''跑一个'''
+    # dicom_path = './hospital_data/MRI_T2/Dicom/1'
+    # out_path = './hospital_data/pred'
+    # dcm_pred(dicom_path, out_path)
+
+    dicom_dir = './hospital_data/MRI_T2/Dicom'
+    out_dir = './hospital_data/pred'
+    dicom_names = os.listdir(dicom_dir)
+    for dicom_name in dicom_names:
+        dicom_path = os.path.join(dicom_dir, dicom_name)
+        out_path = os.path.join(out_dir, dicom_name)
+        dcm_pred(dicom_path, out_path)
 
 
