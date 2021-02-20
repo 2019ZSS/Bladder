@@ -12,8 +12,8 @@ from tqdm import tqdm
 from PIL import Image, ImageOps
 
 
-def show_3d_dicm(PathDicom):
-    """.dicm文件内容
+def get_dcm_list(PathDicom):
+    """
     PathDicom: dicom 文件路径
     """
     # 用lstFilesDCM作为存放DICOM files的列表
@@ -27,6 +27,15 @@ def show_3d_dicm(PathDicom):
     if len(lstFilesDCM) == 0:
         raise("{}目录下没有dcm文件, 请检查目录是否正确".format(PathDicom))
 
+    return lstFilesDCM
+
+
+def show_3d_dicom(PathDicom):
+    """.dcm文件内容
+    PathDicom: dicom 文件路径
+    """
+    lstFilesDCM = get_dcm_list(PathDicom)
+    
     ## 将第一张图片作为参考图
     RefDs = pydicom.read_file(lstFilesDCM[0])   #读取第一张dicom图片
 
@@ -306,7 +315,7 @@ if __name__ == "__main__":
     print('3d data')
     # PathDicom = "./hospital_data/3d/GENERAL/1.2.528.1.1001.200.2033.2157.206915881851013.20190521085533187/SDY00000/SRS00000" 
     # dicom_dir_path = r'.\hospital_data\3d\GENERAL\1.2.528.1.1001.200.2033.2157.206915881851013.20190521085533187\DICOMDIR'
-    # show_3d_dicm(PathDicom)
+    # show_3d_dicom(PathDicom)
     # show_dicom_dir(dicom_dir_path)
 
     # dicom_dir = r'.\hospital_data\3d\GENERAL\1.2.528.1.1001.200.2033.2157.206915881851013.20190521085533187\SDY00000\SRS00000'

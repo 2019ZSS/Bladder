@@ -11,9 +11,16 @@ import utils.transforms as extended_transforms
 from utils.metrics import *
 from utils.loss import *
 from u_net import U_Net
-from dicom_data import is_dicom_file, dcm_to_img_numpy
+from dicom_data import (
+    is_dicom_file, 
+    dcm_to_img_numpy, 
+    get_dcm_list,
+)
 import train
 import dicom_bladder
+import numpy as np 
+import nrrd
+
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 LOSS = False 
@@ -26,13 +33,13 @@ palette = [[128], [255], [0]]
 joint_transform = transforms.Compose([
         transforms.ToPILImage(),
         transforms.Resize(256),
-        transforms.CenterCrop(160),
+        # transforms.CenterCrop(160),
     ])
 val_input_transform = extended_transforms.ImgToTensor()
 make_dataset_fn = dicom_bladder.make_dataset_dcm
-val_set = dicom_bladder.Bladder(data_path, mode, make_dataset_fn=make_dataset_fn, 
-                            joint_transform=joint_transform, transform=val_input_transform)
-val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
+# val_set = dicom_bladder.Bladder(data_path, mode, make_dataset_fn=make_dataset_fn, 
+#                             joint_transform=joint_transform, transform=val_input_transform)
+# val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
 
 
 model_name = train.model_name
@@ -52,7 +59,7 @@ elif loss_name == 'bcew_':
     criterion = nn.BCEWithLogitsLoss().to(device)
 
 
-def test_val(model, img_path):
+def test_val(model, img_path, is_show=False):
     if not is_dicom_file(img_path):
         img = Image.open(img_path)
         img = np.array(img)
@@ -80,19 +87,67 @@ def test_val(model, img_path):
     # 用来看预测的像素值
     pred_showval = pred
     pred = helpers.onehot_to_mask(pred, dicom_bladder.palette)
-    # np.uint8()反归一化到[0, 255]
-    imgs = np.uint8(np.hstack([mri, pred]))
-    cv2.imshow("mri pred", imgs)
-    cv2.waitKey(0)
+    if is_show:
+        # np.uint8()反归一化到[0, 255]
+        imgs = np.uint8(np.hstack([mri, pred]))
+        cv2.imshow("mri pred", imgs)
+        cv2.waitKey(0)
+    # pred.shape (H, W, 1)
+    return mri, pred
+
+
+def merge_mri_pred(mri, pred):
+    """mri原图和pred图像融合"""
+    idx = (pred == 255)
+    mri[idx] = pred[idx]
+    return mri 
+
+
+def dcm_pred(dicom_path, out_path):
+    """dicom文件预测，并以nrdd格式进行保存
+    dicom_path: dicom文件保存路径
+    out_path: 输出路径
+    """
+    dcm_list = get_dcm_list(dicom_path)
+    data = []
+    bladder_data = []
+    tumor_data = []
+    for img_path in dcm_list:
+        mri, pred = test_val(model, img_path, is_show=False)
+        mri = mri.transpose([2, 0, 1])
+        pred = pred.transpose([2, 0, 1])
+        data.append(merge_mri_pred(mri, pred))
+        # print(pred.shape)
+        data.append(mri)
+        tmp = np.zeros(pred.shape)
+        tmp[pred == 128] = 128
+        bladder_data.append(tmp)
+
+        tmp = np.zeros(pred.shape)
+        tmp[pred == 255] = 255
+        tumor_data.append(tmp)
+
+        # imgs = np.uint8(np.hstack([bladder_data[-1].transpose([1, 2, 0]), tumor_data[-1].transpose([1, 2, 0])]))
+        # cv2.imshow("bladder tumor", imgs)
+        # cv2.waitKey(0)
+    
+    data = np.concatenate(data)
+    bladder_data = np.concatenate(bladder_data)
+    tumor_data = np.concatenate(tumor_data)
+    nrrd.write(out_path + 'test.nrrd', data, index_order='C')
+    nrrd.write(out_path + 'bladder.nrrd', bladder_data, index_order='C')
+    nrrd.write(out_path + 'tumor.nrrd', tumor_data, index_order='C')
 
 
 if __name__ == "__main__":
     print('test')
-    root = './hospital_data/3d'
-    mode = 'test'
-    imgs = make_dataset_fn(root=root, mode=mode)
-    for img_path in imgs:
-        test_val(model, img_path)
-    
+    # root = './hospital_data/3d'
+    # mode = 'test'
+    # imgs = make_dataset_fn(root=root, mode=mode)
+    # for img_path in imgs:
+    #     test_val(model, img_path, is_show=True)
+    dicom_path = r'.\hospital_data\MRI_T2\Dicom\1'
+    out_path = './hospital_data/pred/'
+    dcm_pred(dicom_path, out_path)
 
 
