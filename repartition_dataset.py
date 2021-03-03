@@ -47,7 +47,8 @@ def partition_data(dataset_dir, ouput_root):
     return train_names, val_names
  
 
-def partition_data_v2(dataset_dir, output_root): 
+def partition_data_v2(dataset_dir, output_root, is_need=False):
+    """"is_need = True表示加入不干净的数据""" 
     x_pre_path = dataset_dir + '/Image(split_by_people&class)'
     y_pre_path = dataset_dir + '/Label(split_by_people&class)'
     n = len(os.listdir(x_pre_path))
@@ -62,6 +63,15 @@ def partition_data_v2(dataset_dir, output_root):
                 # y_img = os.path.join(tmp_y_path, filename)
                 # image_names.append((x_img, y_img))
                 image_names.append(str(i + 1) + '/clear_bladder/' + filename)
+
+        tmp_x_path = x_pre_path + '/' + str(i + 1) + '/unclear_bladder'
+        tmp_y_path = y_pre_path + '/' + str(i + 1) + '/unclear_bladder'
+        for path, _, filelist in os.walk(tmp_x_path):
+            for filename in filelist:
+                # x_img = os.path.join(tmp_x_path, filename)
+                # y_img = os.path.join(tmp_y_path, filename)
+                # image_names.append((x_img, y_img))
+                image_names.append(str(i + 1) + '/unclear_bladder/' + filename)
 
     # 随机打乱
     random.shuffle(image_names)
@@ -121,22 +131,22 @@ def partition_data_v3(dataset_dir, output_root):
 if __name__ == '__main__':
     print('partition_data')
 
-    # dataset_dir = './data'
-    # output_root = './data'
-    # train_names,  val_names = partition_data(dataset_dir, output_root)
-    # print(len(train_names))
-    # # print(train_names)
-    # print(len(val_names))
-    # # print(val_names)
+    dataset_dir = './data'
+    output_root = './data'
+    train_names,  val_names = partition_data(dataset_dir, output_root)
+    print(len(train_names))
+    # print(train_names)
+    print(len(val_names))
+    # print(val_names)
 
-    # dataset_dir = './hospital_data/2d'
-    # output_root = './hospital_data/2d'
-    # train_names,  val_names = partition_data_v2(dataset_dir, output_root)
-    # print(len(train_names))
-    # # print(train_names)
-    # print(len(val_names))
-    # # print(val_names)
+    dataset_dir = './hospital_data/2d'
+    output_root = './hospital_data/2d'
+    train_names,  val_names = partition_data_v2(dataset_dir, output_root, is_need=True)
+    print(len(train_names))
+    # print(train_names)
+    print(len(val_names))
+    # print(val_names)
 
-    dataset_dir = './hospital_data/3d/GENERAL'
-    output_root = './hospital_data/3d'
-    partition_data_v3(dataset_dir, output_root)
+    # dataset_dir = './hospital_data/3d/GENERAL'
+    # output_root = './hospital_data/3d'
+    # partition_data_v3(dataset_dir, output_root)
