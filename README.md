@@ -7,7 +7,10 @@
 ### 项目环境
 
 ```python
-python=3.7.2, pytorch, cuda (装有就行, 版本很随意)
+conda create -n Bladder python=3.7 pytorch torchvision cudatoolkit=11.0 -c pytorch
+(cuda根据自己的电脑版本微调9.0, 10.2)
+conda activate Bladder
+pip install -r requirements.txt
 ```
 
 ### 项目文件目录
