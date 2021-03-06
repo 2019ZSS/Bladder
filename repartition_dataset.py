@@ -63,15 +63,15 @@ def partition_data_v2(dataset_dir, output_root, is_need=False):
                 # y_img = os.path.join(tmp_y_path, filename)
                 # image_names.append((x_img, y_img))
                 image_names.append(str(i + 1) + '/clear_bladder/' + filename)
-
-        tmp_x_path = x_pre_path + '/' + str(i + 1) + '/unclear_bladder'
-        tmp_y_path = y_pre_path + '/' + str(i + 1) + '/unclear_bladder'
-        for path, _, filelist in os.walk(tmp_x_path):
-            for filename in filelist:
-                # x_img = os.path.join(tmp_x_path, filename)
-                # y_img = os.path.join(tmp_y_path, filename)
-                # image_names.append((x_img, y_img))
-                image_names.append(str(i + 1) + '/unclear_bladder/' + filename)
+        if is_need:
+            tmp_x_path = x_pre_path + '/' + str(i + 1) + '/unclear_bladder'
+            tmp_y_path = y_pre_path + '/' + str(i + 1) + '/unclear_bladder'
+            for path, _, filelist in os.walk(tmp_x_path):
+                for filename in filelist:
+                    # x_img = os.path.join(tmp_x_path, filename)
+                    # y_img = os.path.join(tmp_y_path, filename)
+                    # image_names.append((x_img, y_img))
+                    image_names.append(str(i + 1) + '/unclear_bladder/' + filename)
 
     # 随机打乱
     random.shuffle(image_names)
@@ -128,20 +128,60 @@ def partition_data_v3(dataset_dir, output_root):
     return test_names
 
 
+def partition_data_v4(dataset_dir, output_root):
+    dicom_dir = os.path.join(dataset_dir, 'Dicom')
+    label_dir = os.path.join(dataset_dir, 'Label(Predicted)')
+
+    dir_name = os.listdir(dicom_dir)
+    dir_name = [x for x in dir_name if '(None)' not in x]
+    random.shuffle(dir_name)
+
+    val_size = 0.2
+    train_names = []
+    val_names = []
+
+    rawdata_size = len(dir_name)
+    random.seed(361)
+    val_indices = random.sample(range(0, rawdata_size), math.floor(rawdata_size * val_size))
+    train_indices = [int(dir_name[i]) for i in range(rawdata_size) if i not in val_indices]
+    val_indices = [int(dir_name[i]) for i in val_indices]
+    
+
+    for i in train_indices:
+        for x in os.listdir(os.path.join(dicom_dir, str(i))):
+            x = x.replace('.dcm', '')
+            train_names.append(str(i) + '_' + x)
+    
+    for i in val_indices:
+        for x in os.listdir(os.path.join(dicom_dir, str(i))):
+            x = x.replace('.dcm', '')
+            val_names.append(str(i) + '_' + x)
+    
+    with open(os.path.join(output_root, 'train.txt'), 'w') as f:
+        for x in train_names:
+            f.write(x + '\n')
+
+    with open(os.path.join(output_root, 'val.txt'), 'w') as f:
+        for x in val_names:
+            f.write(x + '\n')      
+
+    return train_names, val_names
+
+
 if __name__ == '__main__':
     print('partition_data')
 
-    dataset_dir = './data'
-    output_root = './data'
-    train_names,  val_names = partition_data(dataset_dir, output_root)
-    print(len(train_names))
-    # print(train_names)
-    print(len(val_names))
-    # print(val_names)
+    # dataset_dir = './data'
+    # output_root = './data'
+    # train_names,  val_names = partition_data(dataset_dir, output_root)
+    # print(len(train_names))
+    # # print(train_names)
+    # print(len(val_names))
+    # # print(val_names)
 
     dataset_dir = './hospital_data/2d'
     output_root = './hospital_data/2d'
-    train_names,  val_names = partition_data_v2(dataset_dir, output_root, is_need=True)
+    train_names,  val_names = partition_data_v2(dataset_dir, output_root, is_need=False)
     print(len(train_names))
     # print(train_names)
     print(len(val_names))
@@ -149,4 +189,8 @@ if __name__ == '__main__':
 
     # dataset_dir = './hospital_data/3d/GENERAL'
     # output_root = './hospital_data/3d'
-    # partition_data_v3(dataset_dir, output_root)
+    # partition_data_v3(dataset_dir, output_root)   
+
+    # dataset_dir = './hospital_data/MRI_T2'
+    # output_root = './hospital_data/MRI_T2'
+    # partition_data_v4(dataset_dir, output_root)

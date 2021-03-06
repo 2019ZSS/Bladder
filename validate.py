@@ -1,5 +1,5 @@
 # validate.py
-  
+import os  
 import cv2
 from PIL import Image
 import utils.joint_transforms as joint_transforms
@@ -25,7 +25,8 @@ palette = [[128], [255], [0]]
 val_input_transform = extended_transforms.ImgToTensor()
 center_crop = joint_transforms.Compose([
     joint_transforms.Scale(256),
-    joint_transforms.CenterCrop(128)]
+    # joint_transforms.CenterCrop(128)
+    ]
 )
  
 target_transform = extended_transforms.MaskToTensor()
@@ -52,6 +53,7 @@ if loss_name == 'dice_':
 elif loss_name == 'bcew_':
     criterion = nn.BCEWithLogitsLoss().to(device)
 
+cnt = 1
 
 def val(model, img_path, mask_path):
     img = Image.open(img_path)
@@ -99,9 +101,12 @@ def val(model, img_path, mask_path):
     pred = helpers.onehot_to_mask(pred, bladder.palette)
     # np.uint8()反归一化到[0, 255]
     imgs = np.uint8(np.hstack([mri, pred, mask]))
-    cv2.imshow("mri pred gt", imgs)
-    cv2.waitKey(0)
- 
+    # cv2.imshow("mri pred gt", imgs)
+    # cv2.waitKey(0)
+    global cnt
+    cv2.imwrite(os.path.join("./hospital_data/2d_pred", str(cnt) + '.png'), imgs, [int(cv2.IMWRITE_PNG_COMPRESSION), 3]) 
+    cnt += 1
+
 
 def auto_val(model):
     # 效果展示图片数

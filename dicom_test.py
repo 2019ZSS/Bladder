@@ -36,10 +36,10 @@ joint_transform = transforms.Compose([
         # transforms.CenterCrop(160),
     ])
 val_input_transform = extended_transforms.ImgToTensor()
-make_dataset_fn = dicom_bladder.make_dataset_dcm
-val_set = dicom_bladder.Bladder(data_path, mode, make_dataset_fn=make_dataset_fn, 
-                            joint_transform=joint_transform, transform=val_input_transform)
-val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
+# make_dataset_fn = dicom_bladder.make_dataset_dcm
+# val_set = dicom_bladder.Bladder(data_path, mode, make_dataset_fn=make_dataset_fn, 
+#                             joint_transform=joint_transform, transform=val_input_transform)
+# val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
 
 
 model_name = train.model_name
@@ -190,5 +190,3 @@ if __name__ == "__main__":
         dicom_path = os.path.join(dicom_dir, dicom_name)
         out_path = os.path.join(out_dir, dicom_name)
         dcm_pred(dicom_path, out_path)
-
-
