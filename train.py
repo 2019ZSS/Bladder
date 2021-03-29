@@ -18,9 +18,9 @@ from utils import tools
 from u_net import *
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-crop_size = 128
-batch_size = 2
-n_epoch = 30
+crop_size = 256
+batch_size = 4
+n_epoch = 100
 model_name = 'U_Net_'
 loss_name = 'bcew_'
 times = 'no_' + str(n_epoch)
@@ -34,7 +34,7 @@ def main():
     net = U_Net(img_ch=1, num_classes=3).to(device)
     
     train_joint_transform = joint_transforms.Compose([
-        joint_transforms.Scale(256),
+        joint_transforms.Scale(384),
         joint_transforms.RandomRotate(10),
         joint_transforms.RandomHorizontallyFlip()
     ])

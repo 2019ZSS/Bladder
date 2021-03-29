@@ -138,7 +138,7 @@ def accuracy(pred, gt):
 
     N = gt.size(0)
     pred_flat = pred.view(N, -1)
-    gt_flat = gt.view(N, -1)
+    gt_flat = gt.contiguous().view(N, -1)
     tp = torch.sum((pred_flat != 0) * (gt_flat != 0))
     fp = torch.sum((pred_flat != 0) * (gt_flat == 0))
     tn = torch.sum((pred_flat == 0) * (gt_flat == 0))
@@ -154,7 +154,7 @@ def precision(pred, gt):
 
     N = gt.size(0)
     pred_flat = pred.view(N, -1)
-    gt_flat = gt.view(N, -1)
+    gt_flat = gt.contiguous().view(N, -1)
     tp = torch.sum((pred_flat != 0) * (gt_flat != 0))
     fp = torch.sum((pred_flat != 0) * (gt_flat == 0))
 
@@ -167,7 +167,7 @@ def sensitivity(pred, gt):
     """TP / (TP + FN)"""
     N = gt.size(0)
     pred_flat = pred.view(N, -1)
-    gt_flat = gt.view(N, -1)
+    gt_flat = gt.contiguous().view(N, -1)
     tp = torch.sum((pred_flat != 0) * (gt_flat != 0))
     fn = torch.sum((pred_flat == 0) * (gt_flat != 0))
 

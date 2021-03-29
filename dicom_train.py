@@ -24,12 +24,12 @@ from u_net import *
 import dicom_bladder
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-batch_size = 2
+batch_size = 8
 n_epoch = 30
 model_name = 'U_Net_'
 loss_name = 'bcew_'
 times = 'no_' + str(n_epoch)
-extra_description = '3d'
+extra_description = '_3d'
 writer = SummaryWriter(os.path.join('./log/bladder_trainlog',  'bladder_exp', model_name+loss_name+times+extra_description))
 resume = False
 data_path = './hospital_data/MRI_T2'
@@ -38,7 +38,7 @@ data_path = './hospital_data/MRI_T2'
 joint_transform = transforms.Compose([
     transforms.ToPILImage(),
     transforms.Resize(256),
-    transforms.CenterCrop(128)
+#     transforms.CenterCrop(128)
 ])
 transform = extended_transforms.ImgToTensor()
 target_transform = extended_transforms.MaskToTensor()
@@ -59,7 +59,7 @@ elif loss_name == 'bcew_':
 
 optimizer = optim.Adam(net.parameters(), lr=1e-4)
 
-modle_2d = './model/checkpoint/exp/U_Net_bcew_no_30.pth'
+modle_2d = './model/checkpoint/exp/U_Net_bcew_no_100.pth'
 checkpoint = torch.load(modle_2d)
 net.load_state_dict(checkpoint['model_state_dict'])
 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
