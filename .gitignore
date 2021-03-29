@@ -6,3 +6,5 @@ log
 hospital_data
 nstree.json
 test.py
+.ipynb_checkpoints
+*.ipynb 
