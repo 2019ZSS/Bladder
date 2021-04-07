@@ -61,4 +61,31 @@ pip install -r requirements.txt
 
 ```
 
-​                         
+### 项目运行
+
+#### prepared_data
+
+```python
+# 调用repartition_dataset.py利用对应的数据生成函数，生成相对应的数据
+python repartition_dataset.py
+```
+
+#### train(参考train.py里面的参数设置，最简单就是按照默认)
+
+```python
+# default
+python train.py
+
+# setting params
+python train.py --data_path './hospital_data/2d' --epochs 60 --k_fold 8 --optimizer_name SGD --loss_name bcew_
+```
+
+#### test(参考test.py里面的参数设置，最简单就是按照默认, 但是要保证训练模型存在)
+
+```python
+# default
+python train.py
+
+# setting params
+python validate.py --data_path './hospital_data/2d' --epochs 60 --k_fold 8  --loss_name bcew_
+```

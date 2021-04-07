@@ -20,36 +20,66 @@ import train
 import dicom_bladder
 import numpy as np 
 import nrrd
+from utils import tools
+import argparse
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-LOSS = False 
-np.set_printoptions(threshold=9999999)
-batch_size = 1
-data_path = './hospital_data/3d'
-mode = 'test'
+parser = argparse.ArgumentParser()
+parser.add_argument('--data_path', type=str, default='./hospital_data/3d', help='load input data path')
+parser.add_argument('--pred_save_path', type=str, default='./hospital_data/3d_pred', help='saved path about the pred-2d-image')
+parser.add_argument('--dicom_dir', type=str, default='./hospital_data/MRI_T2/Dicom', help='dicom data path')
+parser.add_argument('--nrrd_out_dir', type=str, default='./hospital_data/pred', help='nrrd file save path')
+parser.add_argument("--epochs", type=int, default=50, help="number of epochs")
+parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
+parser.add_argument("--n_cpu", type=int, default=4, help="number of cpu threads to use during batch generation")
+parser.add_argument("--n_gpu", type=str, default='0,1', help="number of cpu threads to use during batch generation")
+parser.add_argument("--scale_size", type=int, default=256, help='scale size of input iamge')
+parser.add_argument("--crop_size", type=int, default=256, help='crop size of input image')
+parser.add_argument("--model_name", type=str, default='U_Net', help='model name')
+parser.add_argument("--optimizer_name", type=str, default='SGD', help='optimizer name')
+parser.add_argument("--loss_name", type=str, default='bcew_', help='loss_name')
+parser.add_argument("--extra_description", type=str, default='', help='some extra information about the model')
+parser.add_argument("--LOSS", type=bool, default=False, help='Whether to record validate loss')
+opt = parser.parse_args()
+num_workers = opt.n_cpu
+os.environ["CUDA_VISIBLE_DEVICES"] = opt.n_gpu
+data_path = opt.data_path
+pred_save_path = opt.pred_save_path
+scale_size = opt.scale_size
+crop_size = opt.crop_size
+batch_size = opt.batch_size
+n_epoch = opt.epochs
+model_name = opt.model_name
+optimizer_name = opt.optimizer_name
+loss_name = opt.loss_name
+extra_description = opt.extra_description
+LOSS = opt.LOSS
+times = 'no_' + str(n_epoch)
 
+model_path = './model/checkpoint/exp/{}.pth'.format('_'.join([model_name, optimizer_name, loss_name, times, extra_description]))
+
+model = U_Net(img_ch=1, num_classes=3).to(device)
+if torch.cuda.is_available() and torch.cuda.device_count() > 1:
+    model = torch.nn.DataParallel(model.cuda())
+checkpoint = torch.load(model_path)
+model.load_state_dict(checkpoint['model_state_dict'])
+model.eval()
+
+np.set_printoptions(threshold=9999999)
+mode = 'test'
 palette = [[128], [255], [0]]
 joint_transform = transforms.Compose([
         transforms.ToPILImage(),
-        transforms.Resize(256),
-        # transforms.CenterCrop(160),
-    ])
+        transforms.Resize(scale_size),
+        # transforms.CenterCrop(crop_size),
+])
 val_input_transform = extended_transforms.ImgToTensor()
 # make_dataset_fn = dicom_bladder.make_dataset_dcm
 # val_set = dicom_bladder.Bladder(data_path, mode, make_dataset_fn=make_dataset_fn, 
 #                             joint_transform=joint_transform, transform=val_input_transform)
 # val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
 
-
-model_name = train.model_name
-loss_name = train.loss_name
-times = train.times
-extra_description = train.extra_description
-checkpoint = torch.load("./model/checkpoint/exp/{}.pth".format(model_name + loss_name + times + extra_description))
-model = U_Net(img_ch=1, num_classes=3).to(device)
-model.load_state_dict(checkpoint['model_state_dict'])
-model.eval()
 if LOSS:
     writer = SummaryWriter(os.path.join('./log/vallog', 'bladder_exp', model_name+loss_name+times+extra_description))
 
@@ -57,6 +87,8 @@ if loss_name == 'dice_':
     criterion = SoftDiceLossV2(activation='sigmoid', num_classes=3).to(device)
 elif loss_name == 'bcew_':
     criterion = nn.BCEWithLogitsLoss().to(device)
+else:
+    raise NotImplementedError('{} NotImplemented '.format(loss_name))
 
 
 def test_val(model, img_path, is_show=False):
@@ -115,6 +147,7 @@ def dcm_pred(dicom_path, out_path):
         return 
 
     data = []
+    pred_data = []
     bladder_data = []
     tumor_data = []
     for img_path in dcm_list:
@@ -123,6 +156,7 @@ def dcm_pred(dicom_path, out_path):
         pred = pred.transpose([2, 0, 1])
         # data.append(merge_mri_pred(mri, pred))
         data.append(mri)
+        pred_data.append(pred)
         # print(pred.shape)
         tmp = np.zeros(pred.shape)
         tmp[pred == 128] = 128
@@ -141,6 +175,7 @@ def dcm_pred(dicom_path, out_path):
     bladder_data = np.concatenate(bladder_data)
     tumor_data = np.concatenate(tumor_data)
     nrrd.write(os.path.join(out_path, 'origin.nrrd'), data, index_order='C')
+    nrrd.write(os.path.join(out_path, 'pred.nrrd'), data, index_order='C')
     nrrd.write(os.path.join(out_path, 'bladder.nrrd'), bladder_data, index_order='C')
     nrrd.write(os.path.join(out_path, 'tumor.nrrd'), tumor_data, index_order='C')
 
@@ -183,8 +218,8 @@ if __name__ == "__main__":
     # out_path = './hospital_data/pred'
     # dcm_pred(dicom_path, out_path)
 
-    dicom_dir = './hospital_data/MRI_T2/Dicom'
-    out_dir = './hospital_data/pred'
+    dicom_dir = opt.dicom_dir
+    out_dir = opt.nrrd_out_dir
     dicom_names = os.listdir(dicom_dir)
     for dicom_name in dicom_names:
         dicom_path = os.path.join(dicom_dir, dicom_name)

@@ -167,6 +167,81 @@ def partition_data_v4(dataset_dir, output_root):
 
     return train_names, val_names
 
+def get_image_paths(index, image_dir, unclear=False):
+    image_path = []
+    pre_dir = os.path.join(image_dir, 'clear_bladder')
+    for file in os.listdir(pre_dir):
+        image_path.append('/'.join([str(index), 'clear_bladder', file]))
+    if unclear:
+        pre_dir  = os.path.join(image_dir, 'unclear_bladder')
+        for file in os.listdir(pre_dir):
+            image_path.append('/'.join([str(index), 'unclear_bladder', file]))
+    return image_path
+
+
+def get_k_fold_data(dataset_dir, output_root, k=8, test_size=0.2, unclear=False):
+    '''k-折交叉验证
+    k: 几折
+    val_size：验证集合所占的比例
+    unclear: 不清晰的数据是否需要加入
+    8折交叉验证为例:
+    39个病人，随机取出32个病人作为训练数据，剩余7个病人为测试数据集
+    32个病人中划分8折交叉验证, 每四个病人作为一组
+    '''
+    dataset_dir = os.path.join(dataset_dir, 'Label(split_by_people&class)')
+    dirs = [item for item in os.listdir(dataset_dir)]
+    rawdata_size = len(dirs)
+    random.seed(233)
+    test_indices = random.sample(range(0, rawdata_size), math.floor(rawdata_size * test_size))
+    train_indices = [i for i in range(0, rawdata_size) if i not in test_indices]
+
+    output_dir = os.path.join(output_root, '{}_fold'.format(k))
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    with open(os.path.join(output_dir, 'test.txt'), 'w') as f:
+        for i in test_indices:
+            image_dir = os.path.join(dataset_dir, dirs[i])
+            image_path = get_image_paths(dirs[i], image_dir, unclear)
+            for item in image_path:
+                f.write(item)
+                f.write('\n')
+
+    # 每个训练集合的平均病人数量, 上取整
+    train_avg = math.floor((rawdata_size - len(test_indices)) / k) 
+    cnt, indices = 0, []
+
+    def get_kth_train_dataset(indices):
+        train_images = []
+        for i in indices:
+            image_dir = os.path.join(dataset_dir, dirs[i])
+            train_images += get_image_paths(dirs[i], image_dir, unclear)
+        return train_images
+        
+    k_train_images = []
+    for item in train_indices:
+        indices.append(item)
+        if len(indices) == train_avg:
+            k_train_images.append(get_kth_train_dataset(indices))
+            indices = []
+            cnt = cnt + 1
+    
+    # 把最后不均匀的一部分整体写入
+    if len(indices) > 0:
+        k_train_images.append(get_kth_train_dataset(indices))
+    
+    for i in range(len(k_train_images)):
+        with open(os.path.join(output_dir, 'train_{}.txt'.format(i)), 'w') as f1:
+            for j, train_images in enumerate(k_train_images):
+                if i == j:
+                    with open(os.path.join(output_dir, 'val_{}.txt'.format(i)), 'w') as f2:
+                        for item in train_images:
+                            f2.write(item)
+                            f2.write('\n')
+                else:
+                    for item in train_images:
+                        f1.write(item)
+                        f1.write('\n')
 
 if __name__ == '__main__':
     print('partition_data')
@@ -181,10 +256,11 @@ if __name__ == '__main__':
 
     dataset_dir = './hospital_data/2d'
     output_root = './hospital_data/2d'
-    train_names,  val_names = partition_data_v2(dataset_dir, output_root, is_need=False)
-    print(len(train_names))
-    # print(train_names)
-    print(len(val_names))
+    get_k_fold_data(dataset_dir=dataset_dir, output_root=output_root)
+    # train_names,  val_names = partition_data_v2(dataset_dir, output_root, is_need=False)
+    # print(len(train_names))
+    # # print(train_names)
+    # print(len(val_names))
     # print(val_names)
 
     # dataset_dir = './hospital_data/3d/GENERAL'

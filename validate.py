@@ -11,51 +11,108 @@ from utils import helpers
 import utils.transforms as extended_transforms
 from utils.metrics import *
 from utils.loss import *
-from u_net import U_Net
-import train
+from u_net import *
+from utils import tools
+from train import auto_val
+import re 
+import argparse
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-LOSS = False 
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--data_path', type=str, default='./hospital_data/2d', help='load input data path')
+parser.add_argument('--pred_save_path', type=str, default='./hospital_data/2d_pred', help='saved path about the pred-2d-image')
+parser.add_argument("--epochs", type=int, default=50, help="number of epochs")
+parser.add_argument("--k_fold", type=int, default=1, help='k fold training')
+parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
+parser.add_argument("--n_cpu", type=int, default=4, help="number of cpu threads to use during batch generation")
+parser.add_argument("--n_gpu", type=str, default='0,1', help="number of cpu threads to use during batch generation")
+parser.add_argument("--scale_size", type=int, default=256, help='scale size of input iamge')
+parser.add_argument("--crop_size", type=int, default=256, help='crop size of input image')
+parser.add_argument("--model_name", type=str, default='U_Net', help='model name')
+parser.add_argument("--optimizer_name", type=str, default='SGD', help='optimizer name')
+parser.add_argument("--metric", type=str, default='dice_coef', help='evaluation bladder and tumor loss')
+parser.add_argument("--loss_name", type=str, default='bcew_', help='loss_name')
+parser.add_argument("--extra_description", type=str, default='', help='some extra information about the model')
+parser.add_argument("--LOSS", type=bool, default=False, help='Whether to record validate loss')
+opt = parser.parse_args()
+num_workers = opt.n_cpu
+os.environ["CUDA_VISIBLE_DEVICES"] = opt.n_gpu
+data_path = opt.data_path
+k_fold = opt.k_fold
+pred_save_path = opt.pred_save_path
+scale_size = opt.scale_size
+crop_size = opt.crop_size
+batch_size = opt.batch_size
+n_epoch = opt.epochs
+model_name = opt.model_name
+optimizer_name = opt.optimizer_name
+metric = opt.metric
+loss_name = opt.loss_name
+extra_description = opt.extra_description
+LOSS = opt.LOSS
+times = 'no_' + str(n_epoch)
+if not os.path.exists('./log/eval'):
+    os.makedirs('./log/eval')
+log_file = os.path.join('./log/eval', '_'.join([model_name, optimizer_name, loss_name, times, extra_description]) + '.log')
+log = tools.Logger(filename=log_file)
+
+model_path = './model/checkpoint/exp/{}.pth'.format('_'.join([model_name, optimizer_name, loss_name, times, extra_description]))
+
+model = U_Net(img_ch=1, num_classes=3).to(device)
+if torch.cuda.is_available() and torch.cuda.device_count() > 1:
+    model = torch.nn.DataParallel(model.cuda())
+checkpoint = torch.load(model_path)
+model.load_state_dict(checkpoint['model_state_dict'])
+model.eval()
+
 # numpy 高维数组打印不显示...
 np.set_printoptions(threshold=9999999)
-batch_size = 1
-data_path = './hospital_data/2d'
-
 palette = [[128], [255], [0]]
 val_input_transform = extended_transforms.ImgToTensor()
 center_crop = joint_transforms.Compose([
-    joint_transforms.Scale(256),
-    # joint_transforms.CenterCrop(128)
-    ]
-)
+    joint_transforms.Scale(scale_size),
+    joint_transforms.CenterCrop(crop_size)
+])
  
 target_transform = extended_transforms.MaskToTensor()
 make_dataset_fn = bladder.make_dataset_v2
-val_set = bladder.Bladder(data_path, 'val',
-                              transform=val_input_transform, center_crop=center_crop,
-                              target_transform=target_transform, make_dataset_fn=make_dataset_fn)
-val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
- 
-# 验证用的模型名称
-model_name = train.model_name
-loss_name = train.loss_name
-times = train.times
-extra_description = train.extra_description
-checkpoint = torch.load("./model/checkpoint/exp/{}.pth".format(model_name + loss_name + times + extra_description))
-model = U_Net(img_ch=1, num_classes=3).to(device)
-model.load_state_dict(checkpoint['model_state_dict'])
-model.eval()
+if k_fold > 1:
+    mode = 'test'
+    mode_root = os.path.join(data_path, '{}_fold'.format(k_fold))
+else:
+    mode = 'val'
+    mode_root = None
+val_set = bladder.Bladder(root=data_path, mode=mode, mode_root=mode_root,
+                            transform=val_input_transform, center_crop=center_crop,
+                            target_transform=target_transform, make_dataset_fn=make_dataset_fn)
+val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+
+
 if LOSS:
-    writer = SummaryWriter(os.path.join('./log/vallog', 'bladder_exp', model_name+loss_name+times+extra_description))
+    writer = SummaryWriter(os.path.join('./log/eval', 'bladder_exp', '_'.join([model_name, optimizer_name, loss_name, times, extra_description])))
 
 if loss_name == 'dice_':
-    criterion = SoftDiceLossV2(activation='sigmoid', num_classes=3).to(device)
+    criterion = SoftDiceLossV2(activation='sigmoid', num_classes=3, dice=metric).to(device)
 elif loss_name == 'bcew_':
     criterion = nn.BCEWithLogitsLoss().to(device)
+else:
+    raise NotImplementedError('{} NotImplemented '.format(loss_name))
 
-cnt = 1
 
-def val(model, img_path, mask_path):
+if metric == 'diceCoeff':
+    metric_fn = diceCoeff
+elif metric == 'diceCoeffv2':
+    metric_fn = diceCoeffv2
+elif metric == 'diceCoeffv3':
+    metric_fn = diceCoeffv3
+elif metric == 'dice_coef':
+    metric_fn = dice_coef
+else:
+    raise NotImplementedError("{} NotImplemented".format(metric))
+
+
+def eval(cnt, model, img_path, mask_path):
     img = Image.open(img_path)
     mask = Image.open(mask_path)
     img, mask = center_crop(img, mask)
@@ -90,9 +147,7 @@ def val(model, img_path, mask_path):
     acc = accuracy(pred, gt.to(device))
     p = precision(pred, gt.to(device))
     r = recall(pred, gt.to(device))
-    print('mean_dice={:.4}, bladder_dice={:.4}, tumor_dice={:.4}, acc={:.4}, p={:.4}, r={:.4}'
-          .format(mean_dice.item(), bladder_dice.item(), tumor_dice.item(),
-                  acc.item(), p.item(), r.item()))
+    log.logger.info('mean_dice={:.4}, bladder_dice={:.4}, tumor_dice={:.4}, acc={:.4}, p={:.4}, r={:.4}'.format(mean_dice.item(), bladder_dice.item(), tumor_dice.item(), acc.item(), p.item(), r.item()))
     pred = pred.cpu().detach().numpy()[0].transpose([1, 2, 0])
     if val_input_transform.name == 'ImgToTensorV2':
         pred = np.uint8(pred * 255)
@@ -101,81 +156,19 @@ def val(model, img_path, mask_path):
     pred = helpers.onehot_to_mask(pred, bladder.palette)
     # np.uint8()反归一化到[0, 255]
     imgs = np.uint8(np.hstack([mri, pred, mask]))
-    # cv2.imshow("mri pred gt", imgs)
-    # cv2.waitKey(0)
-    global cnt
-    cv2.imwrite(os.path.join("./hospital_data/2d_pred", str(cnt) + '.png'), imgs, [int(cv2.IMWRITE_PNG_COMPRESSION), 3]) 
-    cnt += 1
-
-
-def auto_val(model):
-    # 效果展示图片数
-    iters = 0
-    SIZES = 8
-    imgs = []
-    preds = []
-    gts = []
-    dices = 0
-    tumor_dices = 0
-    bladder_dices = 0
-    for i, (img, mask) in enumerate(val_loader):
-        im = img
-        img = img.to(device)
-        model = model.to(device)
-        pred = model(img)
-        if LOSS:
-            loss = criterion(pred, mask.to(device)).item()
-        pred = torch.sigmoid(pred)
-        pred = pred.cpu().detach()
-        iters += batch_size
-        pred[pred < 0.5] = 0
-        pred[pred > 0.5] = 1
-        bladder_dice = diceCoeff(pred[:, 0:1, :], mask[:, 0:1, :], activation=None)
-        tumor_dice = diceCoeff(pred[:, 1:2, :], mask[:, 1:2, :], activation=None)
-        mean_dice = (bladder_dice + tumor_dice) / 2
-        dices += mean_dice
-        tumor_dices += tumor_dice
-        bladder_dices += bladder_dice
-        acc = accuracy(pred, mask)
-        p = precision(pred, mask)
-        r = recall(pred, mask)
-        print('mean_dice={:.4}, bladder_dice={:.4}, tumor_dice={:.4}, acc={:.4}, p={:.4}, r={:.4}'
-              .format(mean_dice.item(), bladder_dice.item(), tumor_dice.item(),
-                      acc, p, r))
-        gt = mask.numpy()[0].transpose([1, 2, 0])
-        gt = helpers.onehot_to_mask(gt, bladder.palette)
-        pred = pred.cpu().detach().numpy()[0].transpose([1, 2, 0])
-        if val_input_transform.name == 'ImgToTensorV2':
-            pred = np.uint8(pred * 255)
-        pred = helpers.onehot_to_mask(pred, bladder.palette)
-        im = im[0].numpy().transpose([1, 2, 0])
-        if LOSS:
-            writer.add_scalar('val_main_loss', loss, iters)
-        if len(imgs) < SIZES:
-            if val_input_transform.name == 'ImgToTensorV2':
-                im = np.uint8(im * 255)
-            imgs.append(im)
-            preds.append(pred)
-            gts.append(gt)
-    val_mean_dice = dices / (len(val_loader) / batch_size)
-    val_tumor_dice = tumor_dices / (len(val_loader) / batch_size)
-    val_bladder_dice = bladder_dices / (len(val_loader) / batch_size)
-    print('Val Mean Dice = {:.4}, Val Bladder Dice = {:.4}, Val Tumor Dice = {:.4}'
-          .format(val_mean_dice, val_bladder_dice, val_tumor_dice))
-
-    imgs = np.hstack([*imgs])
-    preds = np.hstack([*preds])
-    gts = np.hstack([*gts])
-    show_res = np.vstack(np.uint8([imgs, preds, gts]))
-    cv2.imshow("top is mri , middle is pred,  bottom is gt", show_res)
-    cv2.waitKey(0)
+    if not os.path.exists(pred_save_path):
+        os.makedirs(pred_save_path)
+    tmp = re.search(r'\d+\s{1,}\(\d+\).png', img_path)
+    if hasattr(tmp, 'group'):
+        suffix = tmp.group()
+    else:
+        suffix = str(cnt) + '.png'
+    cv2.imwrite(os.path.join(pred_save_path, suffix), imgs, [int(cv2.IMWRITE_PNG_COMPRESSION), 3]) 
 
 
 if __name__ == '__main__':
-    print('validate')
     root = data_path
-    mode = 'val'
-    imgs = make_dataset_fn(root=root, mode=mode)
-    for img_path, mask_path in imgs:
-        val(model, img_path, mask_path)
-    # auto_val(model)
+    imgs = make_dataset_fn(root=root, mode=mode, mode_root=mode_root)
+    for i, (img_path, mask_path) in enumerate(imgs):
+        eval(i, model, img_path, mask_path)
+    auto_val(model, val_loader, metric_fn)

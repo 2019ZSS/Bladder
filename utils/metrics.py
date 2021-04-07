@@ -96,6 +96,49 @@ def diceCoeffv3(pred, gt, eps=1e-5, activation='sigmoid'):
     return score.sum() / N
 
 
+def dice_coef(pred, gt, activation='sigmoid'):
+    '''
+    pred为预测结果 
+    gt为真实结果
+    computational formula：dice = (2 * tp) / (2 * tp + fp + fn)
+    '''
+    if activation is None or activation == "none":
+        activation_fn = lambda x: x
+    elif activation == "sigmoid":
+        activation_fn = nn.Sigmoid()
+    elif activation == "softmax2d":
+        activation_fn = nn.Softmax2d()
+    else:
+        raise NotImplementedError("Activation implemented for sigmoid and softmax2d")
+    
+    pred = activation_fn(pred)
+    smooth = 1e-5 #防止0除
+
+    if torch.is_tensor(pred):
+        pred = pred.data.cpu().numpy()
+    if torch.is_tensor(gt):
+        gt = gt.data.cpu().numpy()
+
+    intersection = (pred * gt).sum()
+
+    return (2. * intersection + smooth) / (pred.sum() + gt.sum() + smooth)
+
+
+def iou_score(pred, gt):
+    smooth = 1e-5
+
+    if torch.is_tensor(pred):
+        pred = torch.sigmoid(pred).data.cpu().numpy()
+    if torch.is_tensor(gt):
+        gt = gt.data.cpu().numpy()
+    pred_ = pred > 0.5
+    gt_ = gt > 0.5
+    intersection = (pred_ & gt_).sum()
+    union = (pred_ | gt_).sum()
+
+    return (intersection + smooth) / (union + smooth)
+
+
 def jaccard(pred, gt, activation='sigmoid'):
     """TP / (TP + FP + FN)"""
     if activation is None or activation == "none":

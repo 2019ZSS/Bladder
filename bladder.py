@@ -42,34 +42,47 @@ def make_dataset(root, mode):
     return items
 
 
-def make_dataset_v2(root, mode):
+def make_dataset_v2(root, mode, mode_root=None, kth=-1):
     assert mode in ['train', 'val', 'test']
+    if not mode_root:
+        mode_root = root
     items = []
     if mode == 'train':
         img_path = os.path.join(root, 'Image(split_by_people&class)')
         mask_path = os.path.join(root, 'Label(split_by_people&class)')
-        data_list = [l.strip('\n') for l in open(os.path.join(root, 'train.txt')).readlines()]
+        if kth == -1:
+            data_list = [l.strip('\n') for l in open(os.path.join(mode_root, 'train.txt')).readlines()]
+        else:
+            data_list = [l.strip('\n') for l in open(os.path.join(mode_root, 'train_{}.txt'.format(kth))).readlines()]
         for it in data_list:
             item = (os.path.join(img_path, it), os.path.join(mask_path, it))
             items.append(item)
     elif mode == 'val':
         img_path = os.path.join(root, 'Image(split_by_people&class)')
         mask_path = os.path.join(root, 'Label(split_by_people&class)')
-        data_list = [l.strip('\n') for l in open(os.path.join(root, 'val.txt')).readlines()]
+        if kth == -1:
+            data_list = [l.strip('\n') for l in open(os.path.join(mode_root, 'val.txt')).readlines()]
+        else:
+            data_list = [l.strip('\n') for l in open(os.path.join(mode_root, 'val_{}.txt'.format(kth))).readlines()]
         for it in data_list:
             item = (os.path.join(img_path, it), os.path.join(mask_path, it))
             items.append(item)
     else:
-        pass
+        img_path = os.path.join(root, 'Image(split_by_people&class)')
+        mask_path = os.path.join(root, 'Label(split_by_people&class)')
+        data_list = [l.strip('\n') for l in open(os.path.join(mode_root, 'test.txt')).readlines()]
+        for it in data_list:
+            item = (os.path.join(img_path, it), os.path.join(mask_path, it))
+            items.append(item)
     return items
 
 
 class Bladder(data.Dataset):
-    def __init__(self, root, mode, joint_transform=None, center_crop=None, transform=None, target_transform=None, make_dataset_fn=None):
+    def __init__(self, root, mode, mode_root=None, kth=-1, joint_transform=None, center_crop=None, transform=None, target_transform=None, make_dataset_fn=None):
         if make_dataset_fn is None:
             self.imgs = make_dataset(root, mode)
         else:
-            self.imgs = make_dataset_fn(root, mode)
+            self.imgs = make_dataset_fn(root, mode, mode_root, kth)
         self.palette = palette
         self.mode = mode
         if len(self.imgs) == 0:
