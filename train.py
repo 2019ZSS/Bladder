@@ -4,6 +4,7 @@ from logging import root
 import time
 import os
 import sys
+from typing import Generator
 
 from PIL.ImageOps import scale
 sys.path.append(os.path.abspath(os.path.dirname(__file__)+'/'+'.'))
@@ -28,6 +29,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 parser = argparse.ArgumentParser()
 parser.add_argument("--data_path", type=str, default='./hospital_data/2d', help='load input data path')
 parser.add_argument("--epochs", type=int, default=50, help="number of epochs")
+parser.add_argument("--interval", type=int, default=10, help="How long to save the model")
 parser.add_argument("--k_fold", type=int, default=1, help='k fold training')
 parser.add_argument("--batch_size", type=int, default=8, help="size of each image batch")
 parser.add_argument("--n_cpu", type=int, default=4, help="number of cpu threads to use during batch generation")
@@ -35,14 +37,15 @@ parser.add_argument("--n_gpu", type=str, default='0,1', help="number of cpu thre
 parser.add_argument("--scale_size", type=int, default=256, help='scale size of input iamge')
 parser.add_argument("--crop_size", type=int, default=256, help='crop size of input image')
 parser.add_argument("--model_name", type=str, default='U_Net', help='model name')
-parser.add_argument("--optimizer_name", type=str, default='SGD', help='optimizer name')
+parser.add_argument("--optimizer_name", type=str, default='Adam', help='optimizer name')
 parser.add_argument("--metric", type=str, default='dice_coef', help='evaluation bladder and tumor loss')
 parser.add_argument("--loss_name", type=str, default='bcew_', help='loss_name')
 parser.add_argument("--LR_INIT", type=float, default=1e-4, help='init learing rate')
 parser.add_argument("--extra_description", type=str, default='', help='some extra information about the model')
 parser.add_argument("--resume", type=bool, default=False, help='Whether to continue the training model')
+parser.add_argument("--checkpoint_file", type=str, default='', help='checkpoint file to resume the model')
 parser.add_argument("--LOSS", type=bool, default=False, help='Whether to record validate loss')
-opt = parser.parse_args()
+opt = parser.parse_args() 
 num_workers = opt.n_cpu
 os.environ["CUDA_VISIBLE_DEVICES"] = opt.n_gpu
 data_path = opt.data_path
@@ -51,6 +54,7 @@ scale_size = opt.scale_size
 crop_size = opt.crop_size
 batch_size = opt.batch_size
 n_epoch = opt.epochs
+interval = opt.interval
 model_name = opt.model_name
 optimizer_name = opt.optimizer_name
 metric = opt.metric
@@ -58,12 +62,25 @@ loss_name = opt.loss_name
 LR_INIT = opt.LR_INIT
 extra_description = opt.extra_description
 resume = opt.resume
+checkpoint_file = opt.checkpoint_file
 LOSS = opt.LOSS
 times = 'no_' + str(n_epoch)
 writer = SummaryWriter(os.path.join('./log/bladder_trainlog',  'bladder_exp', '_'.join([model_name, optimizer_name, loss_name, times, extra_description])))
-if not os.path.exists('./log/training'):
-    os.makedirs('./log/training')
-log_file = os.path.join('./log/training', '_'.join([model_name, optimizer_name, loss_name, times, extra_description]) + '.log')
+
+
+def generate_dir(prefix,model_name, optimizer_name, loss_name, metric, k_fold, scale_size, extra_description):
+    keys = [model_name, optimizer_name, loss_name, metric, '{}_fold'.format(k_fold),  str(scale_size), extra_description]
+    return os.path.join(prefix, '_'.join(keys))
+
+model_saved_dir = generate_dir('./model/checkpoint/exp', model_name, optimizer_name, loss_name, metric, k_fold, scale_size, extra_description)
+if not os.path.exists(model_saved_dir):
+    os.makedirs(model_saved_dir)
+
+log_saved_dir = generate_dir('./log/training', model_name, optimizer_name, loss_name, metric, k_fold, scale_size, extra_description)
+if not os.path.exists(log_saved_dir):
+    os.makedirs(log_saved_dir)
+
+log_file = log_saved_dir + times + '.log'
 log = tools.Logger(filename=log_file)
 
 # 数据处理
@@ -134,14 +151,17 @@ def save_model(net, optimizer, epoch):
         'optimizer_state_dict': optimizer.state_dict(),
         'epoch': epoch,
     }
-    torch.save(checkpoint, './model/checkpoint/exp/{}.pth'.format('_'.join([model_name, optimizer_name, loss_name, times, extra_description])))
+    torch.save(checkpoint, os.path.join(model_saved_dir, '{}.pth'.format(epoch)))
  
 
 def train(train_loader, net, criterion, optimizer, num_epoches , iters):
     if resume:
-        CHECKPOINT_FILE = './model/checkpoint/exp/{}.pth'.format('_'.join([model_name, optimizer_name, loss_name, times, extra_description]))
+        if checkpoint_file is None:
+            CHECKPOINT_FILE = os.path.join(model_saved_dir, '{}.pth'.format(num_epoches))
+        else:
+            CHECKPOINT_FILE = checkpoint_file
         # 恢复上次的训练状态
-        print("Resume from checkpoint...")
+        log.logger.info("Resume from checkpoint...")
         checkpoint = torch.load(CHECKPOINT_FILE)
         net.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -149,6 +169,7 @@ def train(train_loader, net, criterion, optimizer, num_epoches , iters):
     else:
         initepoch = 1
     for epoch in range(initepoch, num_epoches + 1):
+        net.train()
         if k_fold > 1:
             k_th = epoch % k_fold
             train_loader = get_dataloader(data_path=data_path, mode='train', kth=k_th)
@@ -195,20 +216,22 @@ def train(train_loader, net, criterion, optimizer, num_epoches , iters):
             log.logger.info('Epoch {}/{},Train Mean Dice {:.4}, Bladder Dice {:.4}, Tumor Dice {:.4}'.format(
                 epoch, num_epoches, m_dice, b_dice, t_dice
             ))
-            if epoch == num_epoches:
+            if (epoch % interval == 0) or (epoch == num_epoches):
                 save_model(net, optimizer, epoch)
-                writer.close() 
+                if epoch == num_epoches:
+                    writer.close() 
             if k_fold > 1:
                 auto_val(net, val_loader, metric_fn) 
         except BaseException as e:
             log.logger.info(e)
-            save_model(net, optimizer, epoch)
+            save_model(net, optimizer, num_epoches)
             writer.close() 
             log.logger.info('end training')
             return None
  
 
 def auto_val(model, val_loader, metric_fn, is_show=False):
+    model.eval()
     iters = 0
     SIZES = 8
     imgs = []

@@ -16,7 +16,6 @@ from dicom_data import (
     dcm_to_img_numpy, 
     get_dcm_list,
 )
-import train
 import dicom_bladder
 import numpy as np 
 import nrrd
@@ -25,19 +24,23 @@ import argparse
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--data_path', type=str, default='./hospital_data/3d', help='load input data path')
+parser.add_argument("--model_path", type=str, default='', help='model path to validate/test')
 parser.add_argument('--pred_save_path', type=str, default='./hospital_data/3d_pred', help='saved path about the pred-2d-image')
 parser.add_argument('--dicom_dir', type=str, default='./hospital_data/MRI_T2/Dicom', help='dicom data path')
 parser.add_argument('--nrrd_out_dir', type=str, default='./hospital_data/pred', help='nrrd file save path')
 parser.add_argument("--epochs", type=int, default=50, help="number of epochs")
+parser.add_argument("--k_fold", type=int, default=1, help='k fold training')
 parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
 parser.add_argument("--n_cpu", type=int, default=4, help="number of cpu threads to use during batch generation")
 parser.add_argument("--n_gpu", type=str, default='0,1', help="number of cpu threads to use during batch generation")
 parser.add_argument("--scale_size", type=int, default=256, help='scale size of input iamge')
 parser.add_argument("--crop_size", type=int, default=256, help='crop size of input image')
 parser.add_argument("--model_name", type=str, default='U_Net', help='model name')
-parser.add_argument("--optimizer_name", type=str, default='SGD', help='optimizer name')
+parser.add_argument("--optimizer_name", type=str, default='Adam', help='optimizer name')
+parser.add_argument("--metric", type=str, default='dice_coef', help='evaluation bladder and tumor loss')
 parser.add_argument("--loss_name", type=str, default='bcew_', help='loss_name')
 parser.add_argument("--extra_description", type=str, default='', help='some extra information about the model')
 parser.add_argument("--LOSS", type=bool, default=False, help='Whether to record validate loss')
@@ -45,6 +48,8 @@ opt = parser.parse_args()
 num_workers = opt.n_cpu
 os.environ["CUDA_VISIBLE_DEVICES"] = opt.n_gpu
 data_path = opt.data_path
+k_fold = opt.k_fold
+model_path = opt.model_path
 pred_save_path = opt.pred_save_path
 scale_size = opt.scale_size
 crop_size = opt.crop_size
@@ -52,12 +57,23 @@ batch_size = opt.batch_size
 n_epoch = opt.epochs
 model_name = opt.model_name
 optimizer_name = opt.optimizer_name
+metric = opt.metric
 loss_name = opt.loss_name
 extra_description = opt.extra_description
 LOSS = opt.LOSS
 times = 'no_' + str(n_epoch)
 
-model_path = './model/checkpoint/exp/{}.pth'.format('_'.join([model_name, optimizer_name, loss_name, times, extra_description]))
+
+def generate_dir(prefix,model_name, optimizer_name, loss_name, metric, k_fold, scale_size, extra_description):
+    keys = [model_name, optimizer_name, loss_name, metric, '{}_fold'.format(k_fold), str(scale_size), extra_description]
+    return os.path.join(prefix, '_'.join(keys))
+
+model_saved_dir = generate_dir('./model/checkpoint/exp', model_name, optimizer_name, loss_name, metric, k_fold, scale_size, extra_description)
+if not os.path.exists(model_saved_dir):
+    os.makedirs(model_saved_dir)
+
+if not model_path:
+    model_path = os.path.join(model_saved_dir, '{}.pth'.format(n_epoch))
 
 model = U_Net(img_ch=1, num_classes=3).to(device)
 if torch.cuda.is_available() and torch.cuda.device_count() > 1:
@@ -81,7 +97,7 @@ val_input_transform = extended_transforms.ImgToTensor()
 # val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
 
 if LOSS:
-    writer = SummaryWriter(os.path.join('./log/vallog', 'bladder_exp', model_name+loss_name+times+extra_description))
+    writer = SummaryWriter(os.path.join('./log/testexp', 'bladder_exp', model_name+loss_name+times+extra_description))
 
 if loss_name == 'dice_':
     criterion = SoftDiceLossV2(activation='sigmoid', num_classes=3).to(device)
@@ -172,10 +188,11 @@ def dcm_pred(dicom_path, out_path):
     if not os.path.exists(out_path):
         os.makedirs(out_path)
     data = np.concatenate(data)
+    pred_data = np.concatenate(pred_data)
     bladder_data = np.concatenate(bladder_data)
     tumor_data = np.concatenate(tumor_data)
     nrrd.write(os.path.join(out_path, 'origin.nrrd'), data, index_order='C')
-    nrrd.write(os.path.join(out_path, 'pred.nrrd'), data, index_order='C')
+    nrrd.write(os.path.join(out_path, 'pred.nrrd'), pred_data, index_order='C')
     nrrd.write(os.path.join(out_path, 'bladder.nrrd'), bladder_data, index_order='C')
     nrrd.write(os.path.join(out_path, 'tumor.nrrd'), tumor_data, index_order='C')
 

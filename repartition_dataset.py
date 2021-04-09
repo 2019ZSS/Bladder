@@ -167,6 +167,7 @@ def partition_data_v4(dataset_dir, output_root):
 
     return train_names, val_names
 
+
 def get_image_paths(index, image_dir, unclear=False):
     image_path = []
     pre_dir = os.path.join(image_dir, 'clear_bladder')
@@ -179,19 +180,44 @@ def get_image_paths(index, image_dir, unclear=False):
     return image_path
 
 
-def get_k_fold_data(dataset_dir, output_root, k=8, test_size=0.2, unclear=False):
-    '''k-折交叉验证
-    k: 几折
-    val_size：验证集合所占的比例
-    unclear: 不清晰的数据是否需要加入
-    8折交叉验证为例:
-    39个病人，随机取出32个病人作为训练数据，剩余7个病人为测试数据集
-    32个病人中划分8折交叉验证, 每四个病人作为一组
+def get_train_val_data(dataset_dir, output_root, val_size=0.2, unclear=False):
+    '''
+    按照病人直接划分数据集和验证集，不作交叉验证
     '''
     dataset_dir = os.path.join(dataset_dir, 'Label(split_by_people&class)')
     dirs = [item for item in os.listdir(dataset_dir)]
     rawdata_size = len(dirs)
-    random.seed(233)
+    val_indices = random.sample(range(0, rawdata_size), math.floor(rawdata_size * val_size))
+    train_indices = [i for i in range(0, rawdata_size) if i not in val_indices]
+    
+    with open(os.path.join(output_root, 'val.txt'), 'w') as f:
+        for i in val_indices:
+            image_dir = os.path.join(dataset_dir, dirs[i])
+            print(image_dir)
+            image_path = get_image_paths(dirs[i], image_dir, unclear)
+            for item in image_path:
+                f.write(item)
+                f.write('\n')
+    
+    with open(os.path.join(output_root, 'train.txt'), 'w') as f:
+        for i in train_indices:
+            image_dir = os.path.join(dataset_dir, dirs[i])
+            image_path = get_image_paths(dirs[i], image_dir, unclear)
+            for item in image_path:
+                f.write(item)
+                f.write('\n')
+
+
+def get_k_fold_data(dataset_dir, output_root, k=10, test_size=0.2, unclear=False):
+    '''k-折交叉验证
+    k: 几折
+    val_size：验证集合所占的比例
+    unclear: 不清晰的数据是否需要加入
+    '''
+    assert k > 1
+    dataset_dir = os.path.join(dataset_dir, 'Label(split_by_people&class)')
+    dirs = [item for item in os.listdir(dataset_dir)]
+    rawdata_size = len(dirs)
     test_indices = random.sample(range(0, rawdata_size), math.floor(rawdata_size * test_size))
     train_indices = [i for i in range(0, rawdata_size) if i not in test_indices]
 
@@ -243,20 +269,14 @@ def get_k_fold_data(dataset_dir, output_root, k=8, test_size=0.2, unclear=False)
                         f1.write(item)
                         f1.write('\n')
 
+
 if __name__ == '__main__':
     print('partition_data')
 
-    # dataset_dir = './data'
-    # output_root = './data'
-    # train_names,  val_names = partition_data(dataset_dir, output_root)
-    # print(len(train_names))
-    # # print(train_names)
-    # print(len(val_names))
-    # # print(val_names)
-
     dataset_dir = './hospital_data/2d'
     output_root = './hospital_data/2d'
-    get_k_fold_data(dataset_dir=dataset_dir, output_root=output_root)
+    # get_train_val_data(dataset_dir, output_root)
+    # get_k_fold_data(dataset_dir=dataset_dir, output_root=output_root, k=10)
     # train_names,  val_names = partition_data_v2(dataset_dir, output_root, is_need=False)
     # print(len(train_names))
     # # print(train_names)

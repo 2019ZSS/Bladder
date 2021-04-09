@@ -13,15 +13,15 @@ from utils.metrics import *
 from utils.loss import *
 from u_net import *
 from utils import tools
-from train import auto_val
 import re 
 import argparse
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--data_path', type=str, default='./hospital_data/2d', help='load input data path')
-parser.add_argument('--pred_save_path', type=str, default='./hospital_data/2d_pred', help='saved path about the pred-2d-image')
+parser.add_argument("--data_path", type=str, default='./hospital_data/2d', help='load input data path')
+parser.add_argument("--model_path", type=str, default='', help='model path to validate/test')
+parser.add_argument("--pred_saved_path", type=str, default='', help="pred 2d-iamge saved path")
 parser.add_argument("--epochs", type=int, default=50, help="number of epochs")
 parser.add_argument("--k_fold", type=int, default=1, help='k fold training')
 parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
@@ -30,7 +30,7 @@ parser.add_argument("--n_gpu", type=str, default='0,1', help="number of cpu thre
 parser.add_argument("--scale_size", type=int, default=256, help='scale size of input iamge')
 parser.add_argument("--crop_size", type=int, default=256, help='crop size of input image')
 parser.add_argument("--model_name", type=str, default='U_Net', help='model name')
-parser.add_argument("--optimizer_name", type=str, default='SGD', help='optimizer name')
+parser.add_argument("--optimizer_name", type=str, default='Adam', help='optimizer name')
 parser.add_argument("--metric", type=str, default='dice_coef', help='evaluation bladder and tumor loss')
 parser.add_argument("--loss_name", type=str, default='bcew_', help='loss_name')
 parser.add_argument("--extra_description", type=str, default='', help='some extra information about the model')
@@ -40,7 +40,8 @@ num_workers = opt.n_cpu
 os.environ["CUDA_VISIBLE_DEVICES"] = opt.n_gpu
 data_path = opt.data_path
 k_fold = opt.k_fold
-pred_save_path = opt.pred_save_path
+model_path = opt.model_path
+pred_saved_path = opt.pred_saved_path
 scale_size = opt.scale_size
 crop_size = opt.crop_size
 batch_size = opt.batch_size
@@ -52,12 +53,28 @@ loss_name = opt.loss_name
 extra_description = opt.extra_description
 LOSS = opt.LOSS
 times = 'no_' + str(n_epoch)
-if not os.path.exists('./log/eval'):
-    os.makedirs('./log/eval')
-log_file = os.path.join('./log/eval', '_'.join([model_name, optimizer_name, loss_name, times, extra_description]) + '.log')
+
+def generate_dir(prefix,model_name, optimizer_name, loss_name, metric, k_fold, scale_size, extra_description):
+    keys = [model_name, optimizer_name, loss_name, metric, '{}_fold'.format(k_fold), str(scale_size), extra_description]
+    return os.path.join(prefix, '_'.join(keys))
+
+model_saved_dir = generate_dir('./model/checkpoint/exp', model_name, optimizer_name, loss_name, metric, k_fold, scale_size, extra_description)
+
+log_saved_dir = generate_dir('./log/eval', model_name, optimizer_name, loss_name, metric, k_fold, scale_size, extra_description)
+if not os.path.exists(log_saved_dir):
+    os.makedirs(log_saved_dir)
+
+log_file = log_saved_dir + times + '.log'
 log = tools.Logger(filename=log_file)
 
-model_path = './model/checkpoint/exp/{}.pth'.format('_'.join([model_name, optimizer_name, loss_name, times, extra_description]))
+if not pred_saved_path:
+    pred_saved_path = generate_dir('./hospital_data/eval', model_name, optimizer_name, loss_name, metric, k_fold, scale_size, extra_description)
+
+if not os.path.exists(pred_saved_path):
+    os.makedirs(pred_saved_path)
+
+if not model_path:
+    model_path = os.path.join(model_saved_dir, '{}.pth'.format(n_epoch))
 
 model = U_Net(img_ch=1, num_classes=3).to(device)
 if torch.cuda.is_available() and torch.cuda.device_count() > 1:
@@ -90,7 +107,7 @@ val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True, num_worker
 
 
 if LOSS:
-    writer = SummaryWriter(os.path.join('./log/eval', 'bladder_exp', '_'.join([model_name, optimizer_name, loss_name, times, extra_description])))
+    writer = SummaryWriter(generate_dir('./log/eval/bladder_exp', model_name, optimizer_name, loss_name, metric, k_fold, scale_size, extra_description))
 
 if loss_name == 'dice_':
     criterion = SoftDiceLossV2(activation='sigmoid', num_classes=3, dice=metric).to(device)
@@ -156,14 +173,60 @@ def eval(cnt, model, img_path, mask_path):
     pred = helpers.onehot_to_mask(pred, bladder.palette)
     # np.uint8()反归一化到[0, 255]
     imgs = np.uint8(np.hstack([mri, pred, mask]))
-    if not os.path.exists(pred_save_path):
-        os.makedirs(pred_save_path)
+    if not os.path.exists(pred_saved_path):
+        os.makedirs(pred_saved_path)
     tmp = re.search(r'\d+\s{1,}\(\d+\).png', img_path)
     if hasattr(tmp, 'group'):
         suffix = tmp.group()
     else:
         suffix = str(cnt) + '.png'
-    cv2.imwrite(os.path.join(pred_save_path, suffix), imgs, [int(cv2.IMWRITE_PNG_COMPRESSION), 3]) 
+    cv2.imwrite(os.path.join(pred_saved_path, suffix), imgs, [int(cv2.IMWRITE_PNG_COMPRESSION), 3]) 
+
+
+def auto_val(model, val_loader, metric_fn, is_show=False):
+    model.eval()
+    iters = 0
+    SIZES = 8
+    imgs = []
+    preds = []
+    gts = []
+    dices = 0
+    tumor_dices = 0
+    bladder_dices = 0
+    for i, (img, mask) in enumerate(val_loader):
+        im = img
+        img = img.to(device)
+        model = model.to(device)
+        pred = model(img)
+        if LOSS:
+            loss = criterion(pred, mask.to(device)).item()
+        pred = torch.sigmoid(pred)
+        pred = pred.cpu().detach()
+        iters += batch_size
+        pred[pred < 0.5] = 0
+        pred[pred > 0.5] = 1
+        bladder_dice = metric_fn(pred[:, 0:1, :], mask[:, 0:1, :], activation=None)
+        tumor_dice = metric_fn(pred[:, 1:2, :], mask[:, 1:2, :], activation=None)
+        mean_dice = (bladder_dice + tumor_dice) / 2
+        dices += mean_dice
+        tumor_dices += tumor_dice
+        bladder_dices += bladder_dice
+        acc = accuracy(pred, mask)
+        p = precision(pred, mask)
+        r = recall(pred, mask)
+        log.logger.info('mean_dice={:.4}, bladder_dice={:.4}, tumor_dice={:.4}, acc={:.4}, p={:.4}, r={:.4}'.format(mean_dice.item(), bladder_dice.item(), tumor_dice.item(), acc, p, r))
+        gt = mask.numpy()[0].transpose([1, 2, 0])
+        gt = helpers.onehot_to_mask(gt, bladder.palette)
+        pred = pred.cpu().detach().numpy()[0].transpose([1, 2, 0])
+        pred = helpers.onehot_to_mask(pred, bladder.palette)
+        im = im[0].numpy().transpose([1, 2, 0])
+        if LOSS:
+            writer.add_scalar('val_main_loss', loss, iters)
+
+    val_mean_dice = dices / (len(val_loader) / batch_size)
+    val_tumor_dice = tumor_dices / (len(val_loader) / batch_size)
+    val_bladder_dice = bladder_dices / (len(val_loader) / batch_size)
+    log.logger.info('Val Mean Dice = {:.4}, Val Bladder Dice = {:.4}, Val Tumor Dice = {:.4}'.format(val_mean_dice, val_bladder_dice, val_tumor_dice))
 
 
 if __name__ == '__main__':
